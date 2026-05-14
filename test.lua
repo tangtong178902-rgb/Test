@@ -1,0 +1,172 @@
+-- [[ CONFIGURATION ]] --
+local FileName = "NexitHub_Key.txt"
+local Client_ServiceID = "nexithub"
+
+-- [[ 1. HUB LOADERS ]] --
+local function LoadPremiumHub()
+    print("💎 [NEXIT] Loading Premium Hub...")
+    -- loadstring(game:HttpGet("URL_PREMIUM_HERE"))()
+end
+
+local function LoadFreeHub()
+    print("✅ [NEXIT] Loading Free Hub...")
+    -- loadstring(game:HttpGet("URL_FREE_HERE"))()
+end
+
+-- [[ 2. API SECTION ]] --
+local BaseURL = "https://new.pandadevelopment.net/api/v1"
+
+local function getHardwareId()
+    local success, hwid = pcall(gethwid)
+    if success and hwid then return hwid end
+    return tostring(game:GetService("RbxAnalyticsService"):GetClientId()):gsub("-", "")
+end
+
+local function Validate(key, RequirePremium)
+    local HttpService = game:GetService("HttpService")
+    local success, response = pcall(function()
+        return request({
+            Url = BaseURL .. "/keys/validate",
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode({
+                ServiceID = Client_ServiceID,
+                HWID = getHardwareId(),
+                Key = key
+            })
+        })
+    end)
+    
+    if not success or not response.Body then return {success = false, message = "Connection Error"} end
+    local result = HttpService:JSONDecode(response.Body)
+    
+    local isAuthenticated = (result.Authenticated_Status == "Success")
+    local isPremium = result.Key_Premium or false
+    
+    -- ถ้าสั่ง RequirePremium (สำหรับ _G.Premium) แต่ API บอกว่าไม่ใช่พรีเมียม ให้ปัดตก
+    if RequirePremium and isAuthenticated and not isPremium then
+        return {success = false, message = "This is a FREE key, not Premium.", isPremium = false}
+    end
+    
+    return {
+        success = isAuthenticated,
+        isPremium = isPremium,
+        message = result.Note or (isAuthenticated and "Success" or "Invalid Key")
+    }
+end
+
+-- [[ 3. ULTRA MODERN UI ]] --
+local function ShowKeyUI()
+    local TweenService = game:GetService("TweenService")
+    local CoreGui = game:GetService("CoreGui")
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "Nexit_Ultra_Key"
+    sg.Parent = (gethui and gethui()) or CoreGui
+    
+    local main = Instance.new("Frame")
+    main.Size = UDim2.new(0, 420, 0, 260)
+    main.Position = UDim2.new(0.5, 0, 0.5, 0)
+    main.AnchorPoint = Vector2.new(0.5, 0.5)
+    main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+    main.BorderSizePixel = 0
+    main.Parent = sg
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 15)
+    local mainStroke = Instance.new("UIStroke", main)
+    mainStroke.Thickness = 2; mainStroke.Color = Color3.fromRGB(80, 50, 220)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 60); title.BackgroundTransparency = 1; title.Text = "NEXIT HUB"; title.TextColor3 = Color3.fromRGB(255, 255, 255); title.TextSize = 24; title.Font = Enum.Font.GothamBold; title.Parent = main
+
+    local inputFrame = Instance.new("Frame")
+    inputFrame.Size = UDim2.new(0, 350, 0, 48); inputFrame.Position = UDim2.new(0.5, 0, 0.48, 0); inputFrame.AnchorPoint = Vector2.new(0.5, 0.5); inputFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25); inputFrame.Parent = main
+    Instance.new("UICorner", inputFrame).CornerRadius = UDim.new(0, 10)
+
+    local input = Instance.new("TextBox")
+    input.Size = UDim2.new(1, -20, 1, 0); input.Position = UDim2.new(0, 10, 0, 0); input.BackgroundTransparency = 1; input.PlaceholderText = "Enter Free Key..."; input.TextColor3 = Color3.fromRGB(255, 255, 255); input.Font = Enum.Font.Gotham; input.TextSize = 14; input.Parent = inputFrame
+
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(1, 0, 0, 30); status.Position = UDim2.new(0, 0, 0.65, 0); status.BackgroundTransparency = 1; status.Text = "Status: Waiting..."; status.TextColor3 = Color3.fromRGB(120, 120, 140); status.TextSize = 12; status.Parent = main
+
+    local function createBtn(text, pos, color)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 170, 0, 42); btn.Position = pos; btn.BackgroundColor3 = color; btn.Text = text; btn.TextColor3 = Color3.fromRGB(255, 255, 255); btn.Font = Enum.Font.GothamBold; btn.TextSize = 13; btn.Parent = main
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
+        return btn
+    end
+
+    local getBtn = createBtn("GET KEY", UDim2.new(0.5, -175, 0.82, 0), Color3.fromRGB(35, 35, 40))
+    local verifyBtn = createBtn("VERIFY", UDim2.new(0.5, 5, 0.82, 0), Color3.fromRGB(80, 50, 220))
+
+    verifyBtn.MouseButton1Click:Connect(function()
+        local key = input.Text
+        if key == "" then return end
+        
+        status.Text = "Checking key..."; status.TextColor3 = Color3.fromRGB(200, 200, 200)
+        local res = Validate(key, false)
+        
+        if res.success then
+            -- ถ้าคีย์ที่ใส่มาเป็น Premium (เช็คจาก API) ห้ามให้ผ่านทาง UI
+            if res.isPremium then
+                status.Text = "Error: Use _G.Premium for Premium keys!"; status.TextColor3 = Color3.fromRGB(255, 100, 100)
+                return
+            end
+            
+            if writefile then writefile(FileName, key) end
+            status.Text = "Success! Loading..."; status.TextColor3 = Color3.fromRGB(100, 255, 150)
+            task.wait(1)
+            sg:Destroy()
+            LoadFreeHub()
+        else
+            status.Text = "Failed: " .. res.message; status.TextColor3 = Color3.fromRGB(255, 100, 100)
+        end
+    end)
+    
+    getBtn.MouseButton1Click:Connect(function()
+        local url = "https://new.pandadevelopment.net/getkey/" .. Client_ServiceID .. "?hwid=" .. getHardwareId()
+        if setclipboard then setclipboard(url) end
+        status.Text = "Link copied to clipboard!"
+    end)
+end
+
+-- [[ 4. MAIN LOGIC ]] --
+
+local function Initialize()
+    local inputPremiumKey = _G.Premium
+    _G.Premium = nil -- ล้างค่าทันที
+
+    -- 1. ตรวจสอบจาก _G.Premium (บังคับเช็คพรีเมียม)
+    if inputPremiumKey and inputPremiumKey ~= "" then
+        print("[NEXIT] Checking Premium Key from script...")
+        local res = Validate(inputPremiumKey, true)
+        if res.success and res.isPremium then
+            if writefile then writefile(FileName, inputPremiumKey) end
+            LoadPremiumHub()
+            return
+        else
+            -- ถ้าพรีเมียมผิด ห้ามเปิด UI (แจ้งเตือนแล้วจบงาน)
+            warn("❌ [NEXIT PREMIUM FAIL]: " .. res.message)
+            return
+        end
+    end
+
+    -- 2. ตรวจสอบ Saved Key (Auto-login)
+    local savedKey = (isfile and isfile(FileName)) and readfile(FileName)
+    if savedKey and savedKey ~= "" then
+        print("[NEXIT] Checking saved key...")
+        local res = Validate(savedKey, false)
+        if res.success then
+            -- แยกโหลด Hub ตามผลลัพธ์จาก API
+            if res.isPremium then
+                LoadPremiumHub()
+            else
+                LoadFreeHub()
+            end
+            return
+        end
+    end
+
+    -- 3. ถ้าไม่มีอะไรผ่านเลย เปิด UI
+    ShowKeyUI()
+end
+
+Initialize()
